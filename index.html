@@ -1,107 +1,136 @@
 <!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8" />
-  <title>Dashboard Monitoring</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-    }
-    select {
-      margin: 5px;
-    }
-    canvas {
-      max-width: 600px;
-      margin-top: 20px;
-    }
-  </style>
-</head>
-<body>
-  <h1>Dashboard Monitoring</h1>
-  <div>
-    <label>Bulan: <select id="bulanFilter"></select></label>
-    <label>PIC: <select id="picFilter"></select></label>
-    <label>Status: <select id="statusFilter"></select></label>
-    <label>Koneksi: <select id="koneksiFilter"></select></label>
-  </div>
-  <canvas id="grafik"></canvas>
+<html>
+  <head>
+    <title>Dashboard Monitoring</title>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      .filters {
+        margin-bottom: 20px;
+      }
+      select {
+        margin-right: 10px;
+        padding: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Dashboard Monitoring</h2>
+    <div class="filters">
+      Bulan: <select id="bulanFilter"></select>
+      PIC: <select id="picFilter"></select>
+      Status: <select id="statusFilter"></select>
+      Koneksi: <select id="koneksiFilter"></select>
+    </div>
+    <div id="chart_div" style="width: 100%; height: 500px;"></div>
 
-  <script>
-    const sheetId = "1ph5T80kBuNzfBEdCqwZ6DgtLyKEXXXhrphke57_63gI";
-    const sheetName = "Data";
-    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${sheetName}`;
+    <script type="text/javascript">
+      google.charts.load('current', { packages: ['corechart'] });
+      google.charts.setOnLoadCallback(init);
 
-    let rawData = [];
+      const sheetURL =
+        'https://docs.google.com/spreadsheets/d/1ph5T80kBuNzfBEdCqwZ6DgtLyKEXXXhrphke57_63gI/gviz/tq?gid=2034854820&headers=1';
 
-    fetch(url)
-      .then(res => res.text())
-      .then(text => {
-        const json = JSON.parse(text.substring(47).slice(0, -2));
-        const rows = json.table.rows.map(row => row.c.map(cell => (cell ? cell.v : '')));
-        const headers = json.table.cols.map(col => col.label);
-        rawData = rows.map(r => Object.fromEntries(r.map((v, i) => [headers[i], v])));
-        populateFilters();
-        updateChart();
-      });
+      let originalData;
 
-    function populateFilters() {
-      const bulan = [...new Set(rawData.map(d => d["Tanggal"].slice(0, 7)))];
-      const pic = [...new Set(rawData.map(d => d["PIC"]))];
-      const status = [...new Set(rawData.map(d => d["Status"]))];
-      const koneksi = [...new Set(rawData.map(d => d["Koneksi"]))];
+      function init() {
+        fetch(sheetURL)
+          .then((res) => res.text())
+          .then((dataText) => {
+            const jsonData = JSON.parse(dataText.substr(47).slice(0, -2));
+            const cols = jsonData.table.cols.map((col) => col.label);
+            const rows = jsonData.table.rows.map((row) =>
+              row.c.map((cell) => (cell ? cell.v : ''))
+            );
 
-      fillSelect("bulanFilter", bulan);
-      fillSelect("picFilter", pic);
-      fillSelect("statusFilter", status);
-      fillSelect("koneksiFilter", koneksi);
+            originalData = rows.map((row) =>
+              Object.fromEntries(cols.map((col, i) => [col, row[i]]))
+            );
 
-      document.querySelectorAll("select").forEach(s => s.addEventListener("change", updateChart));
-    }
+            populateFilters(originalData);
+            drawChart(originalData);
+          });
+      }
 
-    function fillSelect(id, items) {
-      const select = document.getElementById(id);
-      select.innerHTML = `<option value="">Semua</option>` + items.map(i => `<option value="${i}">${i}</option>`).join('');
-    }
+      function populateFilters(data) {
+        const bulanSet = new Set();
+        const picSet = new Set();
+        const statusSet = new Set();
+        const koneksiSet = new Set();
 
-    function updateChart() {
-      const bulan = document.getElementById("bulanFilter").value;
-      const pic = document.getElementById("picFilter").value;
-      const status = document.getElementById("statusFilter").value;
-      const koneksi = document.getElementById("koneksiFilter").value;
+        data.forEach((row) => {
+          bulanSet.add(row['Tanggal'].substr(0, 7)); // format YYYY-MM
+          picSet.add(row['PIC']);
+          statusSet.add(row['Status']);
+          koneksiSet.add(row['Koneksi']);
+        });
 
-      let data = rawData;
+        populateSelect('bulanFilter', bulanSet);
+        populateSelect('picFilter', picSet);
+        populateSelect('statusFilter', statusSet);
+        populateSelect('koneksiFilter', koneksiSet);
 
-      if (bulan) data = data.filter(d => d["Tanggal"].startsWith(bulan));
-      if (pic) data = data.filter(d => d["PIC"] === pic);
-      if (status) data = data.filter(d => d["Status"] === status);
-      if (koneksi) data = data.filter(d => d["Koneksi"] === koneksi);
+        ['bulanFilter', 'picFilter', 'statusFilter', 'koneksiFilter'].forEach((id) => {
+          document.getElementById(id).addEventListener('change', () =>
+            drawChart(originalData)
+          );
+        });
+      }
 
-      const summary = {};
-      data.forEach(d => {
-        summary[d["PIC"]] = (summary[d["PIC"]] || 0) + 1;
-      });
+      function populateSelect(id, values) {
+        const select = document.getElementById(id);
+        select.innerHTML = '<option value="">Semua</option>';
+        Array.from(values)
+          .sort()
+          .forEach((val) => {
+            const option = document.createElement('option');
+            option.value = val;
+            option.textContent = val;
+            select.appendChild(option);
+          });
+      }
 
-      renderChart(Object.keys(summary), Object.values(summary));
-    }
+      function drawChart(data) {
+        const bulanFilter = document.getElementById('bulanFilter').value;
+        const picFilter = document.getElementById('picFilter').value;
+        const statusFilter = document.getElementById('statusFilter').value;
+        const koneksiFilter = document.getElementById('koneksiFilter').value;
 
-    let chart;
-    function renderChart(labels, data) {
-      const ctx = document.getElementById("grafik").getContext("2d");
-      if (chart) chart.destroy();
-      chart = new Chart(ctx, {
-        type: "bar",
-        data: {
-          labels,
-          datasets: [{
-            label: "Jumlah Data per PIC",
-            data,
-            backgroundColor: "rgba(54, 162, 235, 0.5)"
-          }]
-        }
-      });
-    }
-  </script>
-</body>
+        const filtered = data.filter((row) => {
+          return (
+            (!bulanFilter || row['Tanggal'].startsWith(bulanFilter)) &&
+            (!picFilter || row['PIC'] === picFilter) &&
+            (!statusFilter || row['Status'] === statusFilter) &&
+            (!koneksiFilter || row['Koneksi'] === koneksiFilter)
+          );
+        });
+
+        const bulanCount = {};
+        filtered.forEach((row) => {
+          const bulan = row['Tanggal'].substr(0, 7);
+          bulanCount[bulan] = (bulanCount[bulan] || 0) + 1;
+        });
+
+        const chartData = [['Bulan', 'Jumlah']];
+        Object.keys(bulanCount)
+          .sort()
+          .forEach((bulan) => chartData.push([bulan, bulanCount[bulan]]));
+
+        const dataTable = google.visualization.arrayToDataTable(chartData);
+
+        const chart = new google.visualization.ColumnChart(
+          document.getElementById('chart_div')
+        );
+        chart.draw(dataTable, {
+          title: 'Jumlah Data per Bulan',
+          legend: { position: 'none' },
+          hAxis: { title: 'Bulan' },
+          vAxis: { title: 'Jumlah' },
+        });
+      }
+    </script>
+  </body>
 </html>
