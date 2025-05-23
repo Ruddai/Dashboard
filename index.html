@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dashboard Monitoring</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    select {
+      margin: 5px;
+    }
+    canvas {
+      max-width: 600px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Dashboard Monitoring</h1>
+  <div>
+    <label>Bulan: <select id="bulanFilter"></select></label>
+    <label>PIC: <select id="picFilter"></select></label>
+    <label>Status: <select id="statusFilter"></select></label>
+    <label>Koneksi: <select id="koneksiFilter"></select></label>
+  </div>
+  <canvas id="grafik"></canvas>
+
+  <script>
+    const sheetId = "1ph5T80kBuNzfBEdCqwZ6DgtLyKEXXXhrphke57_63gI";
+    const sheetName = "Data";
+    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${sheetName}`;
+
+    let rawData = [];
+
+    fetch(url)
+      .then(res => res.text())
+      .then(text => {
+        const json = JSON.parse(text.substring(47).slice(0, -2));
+        const rows = json.table.rows.map(row => row.c.map(cell => (cell ? cell.v : '')));
+        const headers = json.table.cols.map(col => col.label);
+        rawData = rows.map(r => Object.fromEntries(r.map((v, i) => [headers[i], v])));
+        populateFilters();
+        updateChart();
+      });
+
+    function populateFilters() {
+      const bulan = [...new Set(rawData.map(d => d["Tanggal"].slice(0, 7)))];
+      const pic = [...new Set(rawData.map(d => d["PIC"]))];
+      const status = [...new Set(rawData.map(d => d["Status"]))];
+      const koneksi = [...new Set(rawData.map(d => d["Koneksi"]))];
+
+      fillSelect("bulanFilter", bulan);
+      fillSelect("picFilter", pic);
+      fillSelect("statusFilter", status);
+      fillSelect("koneksiFilter", koneksi);
+
+      document.querySelectorAll("select").forEach(s => s.addEventListener("change", updateChart));
+    }
+
+    function fillSelect(id, items) {
+      const select = document.getElementById(id);
+      select.innerHTML = `<option value="">Semua</option>` + items.map(i => `<option value="${i}">${i}</option>`).join('');
+    }
+
+    function updateChart() {
+      const bulan = document.getElementById("bulanFilter").value;
+      const pic = document.getElementById("picFilter").value;
+      const status = document.getElementById("statusFilter").value;
+      const koneksi = document.getElementById("koneksiFilter").value;
+
+      let data = rawData;
+
+      if (bulan) data = data.filter(d => d["Tanggal"].startsWith(bulan));
+      if (pic) data = data.filter(d => d["PIC"] === pic);
+      if (status) data = data.filter(d => d["Status"] === status);
+      if (koneksi) data = data.filter(d => d["Koneksi"] === koneksi);
+
+      const summary = {};
+      data.forEach(d => {
+        summary[d["PIC"]] = (summary[d["PIC"]] || 0) + 1;
+      });
+
+      renderChart(Object.keys(summary), Object.values(summary));
+    }
+
+    let chart;
+    function renderChart(labels, data) {
+      const ctx = document.getElementById("grafik").getContext("2d");
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: "Jumlah Data per PIC",
+            data,
+            backgroundColor: "rgba(54, 162, 235, 0.5)"
+          }]
+        }
+      });
+    }
+  </script>
+</body>
+</html>
